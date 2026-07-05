@@ -88,13 +88,22 @@ enum IRModule {
         [0x03, UInt8((carrierHz / 1000) & 0x7F)] + durationLimbs(durations)
     }
 
-    /// Build a hold/repeat send (`0x04`) payload: op, carrier kHz, total send count, gap (ms,
-    /// 14-bit), then the durations. The board re-transmits the one frame `repeats` times.
-    static func holdPayload(carrierHz: UInt32, repeats: Int, gapMs: Int, _ durations: [UInt16]) -> [UInt8] {
+    /// Build a repeat/hold send (`0x04`) payload: op, carrier kHz, press count, gap (ms, 14-bit),
+    /// nA (durations in frame A, 14-bit), then frame A's durations, then frame B's. The board
+    /// re-sends `repeats` times, `gapMs` apart, alternating A/B — so RC6 can pass the two toggle
+    /// variants (distinct presses). `frameB` empty → every press sends A (NEC/raw). Frame A is
+    /// padded to an even length so the board's A/B symbol split lands on a frame boundary.
+    static func repeatPayload(carrierHz: UInt32, repeats: Int, gapMs: Int,
+                              _ frameA: [UInt16], _ frameB: [UInt16] = []) -> [UInt8] {
         let rep = UInt8(min(max(1, repeats), 127))
         let gap = UInt16(min(max(0, gapMs), 16383))
-        return [0x04, UInt8((carrierHz / 1000) & 0x7F), rep, UInt8(gap & 0x7F), UInt8((gap >> 7) & 0x7F)]
-            + durationLimbs(durations)
+        var a = frameA
+        if a.count % 2 == 1 { a.append(1) }              // pad to even (trailing 1 µs space)
+        let nA = UInt16(min(a.count, 16383))
+        return [0x04, UInt8((carrierHz / 1000) & 0x7F), rep,
+                UInt8(gap & 0x7F), UInt8((gap >> 7) & 0x7F),
+                UInt8(nA & 0x7F), UInt8((nA >> 7) & 0x7F)]
+            + durationLimbs(a) + durationLimbs(frameB)
     }
 
     private static func durationLimbs(_ durations: [UInt16]) -> [UInt8] {
@@ -121,26 +130,34 @@ public extension FirmataClient {
     }
 
     /// Replay a raw mark/space timing array (µs) at `carrierHz` (0 = no carrier). The sole
-    /// transmit path — `irSendNEC`/`irSendRC6` are built on this. `repeats` > 1 makes the
-    /// board re-transmit the frame that many times, `gapMs` apart (a *hold* — needs fw 2.10+).
+    /// transmit path — `irSendNEC`/`irSendRC6` are built on this. `repeats` > 1 re-transmits the
+    /// frame that many times, `gapMs` apart — N presses (needs fw 2.10+; 2.11+ for RC6 toggle).
     func irSendRaw(carrierHz: UInt32, durations: [UInt16], repeats: Int = 1, gapMs: Int = 110) async throws {
-        let payload = repeats > 1
-            ? IRModule.holdPayload(carrierHz: carrierHz, repeats: repeats, gapMs: gapMs, durations)
-            : IRModule.rawPayload(carrierHz: carrierHz, durations)
-        try await sendToModule(id: IRModule.id, payload: payload)
+        try await irSendFrames(carrierHz: carrierHz, durations, [], repeats: repeats, gapMs: gapMs)
     }
 
     /// Transmit a 32-bit NEC frame (codes as commonly written, MSB-first — e.g. `0x20DF10EF`).
-    /// `carrierHz` defaults to 38 kHz. `repeats` > 1 holds the button (re-sends every `gapMs`).
+    /// `carrierHz` defaults to 38 kHz. `repeats` > 1 = that many presses (re-sent every `gapMs`).
     func irSendNEC(_ code: UInt32, carrierHz: UInt32 = 38_000, repeats: Int = 1, gapMs: Int = 110) async throws {
-        try await irSendRaw(carrierHz: carrierHz, durations: IRModule.necTiming(code), repeats: repeats, gapMs: gapMs)
+        try await irSendFrames(carrierHz: carrierHz, IRModule.necTiming(code), [], repeats: repeats, gapMs: gapMs)
     }
 
-    /// Transmit an RC6 Mode-0 frame — e.g. many TVs. `data` is the value a decoder reports
-    /// (power is often `0x0C`); XOR with `0x10000` between distinct presses. `repeats` > 1
-    /// holds it (RC6 keeps the same toggle while held, which repeating the same value gives).
+    /// Transmit an RC6 Mode-0 frame — e.g. many TVs (`data` is the value a decoder reports;
+    /// power is often `0x0C`). `repeats` > 1 sends that many **distinct presses** — the board
+    /// alternates the toggle bit each frame (e.g. `repeats: 4` = volume down 4 steps).
     func irSendRC6(_ data: UInt32, bits: Int = 20, carrierHz: UInt32 = 36_000, repeats: Int = 1, gapMs: Int = 107) async throws {
-        try await irSendRaw(carrierHz: carrierHz, durations: IRModule.rc6Timing(data, bits: bits), repeats: repeats, gapMs: gapMs)
+        try await irSendFrames(carrierHz: carrierHz,
+                               IRModule.rc6Timing(data, bits: bits),
+                               IRModule.rc6Timing(IRModule.toggleRC6(data), bits: bits),
+                               repeats: repeats, gapMs: gapMs)
+    }
+
+    /// Single frame → raw op 0x03; multiple → repeat op 0x04 alternating frame A / frame B.
+    private func irSendFrames(carrierHz: UInt32, _ a: [UInt16], _ b: [UInt16], repeats: Int, gapMs: Int) async throws {
+        let payload = repeats > 1
+            ? IRModule.repeatPayload(carrierHz: carrierHz, repeats: repeats, gapMs: gapMs, a, b)
+            : IRModule.rawPayload(carrierHz: carrierHz, a)
+        try await sendToModule(id: IRModule.id, payload: payload)
     }
 
     /// Start the IR receiver on `pin`. Every decoded NEC frame is written to `R[register]`
@@ -168,23 +185,29 @@ public extension FirmataTaskRecorder {
         moduleOp(id: IRModule.id, payload: [0x00, pin.number & 0x7F])
     }
 
-    /// Replay a raw mark/space timing array (µs) at `carrierHz` from a task. `repeats` > 1
-    /// holds it — the board re-transmits the one frame that many times, `gapMs` apart.
+    /// Replay a raw mark/space timing array (µs) at `carrierHz` from a task (`repeats` > 1 = N presses).
     func irSendRaw(carrierHz: UInt32, durations: [UInt16], repeats: Int = 1, gapMs: Int = 110) {
-        let payload = repeats > 1
-            ? IRModule.holdPayload(carrierHz: carrierHz, repeats: repeats, gapMs: gapMs, durations)
-            : IRModule.rawPayload(carrierHz: carrierHz, durations)
-        moduleOp(id: IRModule.id, payload: payload)
+        irSendFrames(carrierHz: carrierHz, durations, [], repeats: repeats, gapMs: gapMs)
     }
 
-    /// Transmit a 32-bit NEC frame from the task (`repeats` > 1 = hold).
+    /// Transmit a 32-bit NEC frame from the task (`repeats` > 1 = that many presses).
     func irSendNEC(_ code: UInt32, carrierHz: UInt32 = 38_000, repeats: Int = 1, gapMs: Int = 110) {
-        irSendRaw(carrierHz: carrierHz, durations: IRModule.necTiming(code), repeats: repeats, gapMs: gapMs)
+        irSendFrames(carrierHz: carrierHz, IRModule.necTiming(code), [], repeats: repeats, gapMs: gapMs)
     }
 
-    /// Transmit an RC6 Mode-0 frame from the task — e.g. turn a TV on/off (`repeats` > 1 = hold).
+    /// Transmit an RC6 Mode-0 frame from the task (`repeats` > 1 = N distinct presses, toggle alternated).
     func irSendRC6(_ data: UInt32, bits: Int = 20, carrierHz: UInt32 = 36_000, repeats: Int = 1, gapMs: Int = 107) {
-        irSendRaw(carrierHz: carrierHz, durations: IRModule.rc6Timing(data, bits: bits), repeats: repeats, gapMs: gapMs)
+        irSendFrames(carrierHz: carrierHz,
+                     IRModule.rc6Timing(data, bits: bits),
+                     IRModule.rc6Timing(IRModule.toggleRC6(data), bits: bits),
+                     repeats: repeats, gapMs: gapMs)
+    }
+
+    private func irSendFrames(carrierHz: UInt32, _ a: [UInt16], _ b: [UInt16], repeats: Int, gapMs: Int) {
+        let payload = repeats > 1
+            ? IRModule.repeatPayload(carrierHz: carrierHz, repeats: repeats, gapMs: gapMs, a, b)
+            : IRModule.rawPayload(carrierHz: carrierHz, a)
+        moduleOp(id: IRModule.id, payload: payload)
     }
 
     /// Start the receiver from the task; decoded frames land in `dst` for `ifTrue`.

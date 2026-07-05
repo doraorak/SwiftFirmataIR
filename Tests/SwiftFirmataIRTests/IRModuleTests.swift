@@ -46,17 +46,21 @@ struct IRModuleTests {
         #expect(t.lastSent == [0xF0, 0x0D, 0x01, 0x02, 5, 9, 0xF7])
     }
 
-    @Test func holdBytes() async throws {
+    @Test func repeatBytes() async throws {
         let (c, t) = await makeClient()
         try await c.irConfigureTransmit(pin: 4)
         // repeats == 1 → single raw op (0x03)
         try await c.irSendNEC(0x20DF10EF)
         #expect(t.lastSent?[3] == 0x03)
-        // repeats > 1 → hold op (0x04): [0x04, kHz, rep, gapLo, gapHi, durs…]
+        // RC6 repeats > 1 → repeat op (0x04) carrying BOTH toggle frames (A=data, B=data^0x10000)
         try await c.irSendRC6(0x0C, repeats: 5, gapMs: 107)
-        let hold = IRModule.holdPayload(carrierHz: 36_000, repeats: 5, gapMs: 107, IRModule.rc6Timing(0x0C))
-        #expect(hold[0] == 0x04 && hold[1] == 36 && hold[2] == 5 && hold[3] == 107 && hold[4] == 0)
-        #expect(t.lastSent == [0xF0, 0x0D, 0x01] + hold + [0xF7])
+        #expect(IRModule.toggleRC6(0x0C) == 0x1000C)
+        let a = IRModule.rc6Timing(0x0C), b = IRModule.rc6Timing(0x1000C)
+        let payload = IRModule.repeatPayload(carrierHz: 36_000, repeats: 5, gapMs: 107, a, b)
+        #expect(payload[0] == 0x04 && payload[1] == 36 && payload[2] == 5 && payload[3] == 107 && payload[4] == 0)
+        let nA = a.count % 2 == 1 ? a.count + 1 : a.count          // frame A padded to even
+        #expect(Int(payload[5]) | (Int(payload[6]) << 7) == nA)
+        #expect(t.lastSent == [0xF0, 0x0D, 0x01] + payload + [0xF7])
     }
 
     @Test func encoders() {
