@@ -21,7 +21,7 @@ import SwiftFirmataClient
 import SwiftFirmataIR
 
 // Confirm the connected firmware actually has the module.
-guard try await board.queryModules().contains(where: { $0.id == IRModule.id }) else { return }
+guard try await board.hasIRModule() else { return }
 
 board // transmit
 try await board.irConfigureTransmit(pin: 4)     // TX pin (LED on 5V for range); carrier is per send
@@ -31,18 +31,22 @@ try await board.irSendRC6(0x0C)                 // RC6 Mode-0, 36 kHz — e.g. a
 // receive: decoded NEC frames land in R9 and arrive as moduleEvents
 try await board.irStartReceive(pin: 18, into: 9)
 for await m in board.messages {
-    if case let .moduleEvent(id, p) = m, id == IRModule.id,
-       let code = IRModule.decodeReceivedEvent(p) { print(String(code, radix: 16)) }
+    if let code = m.irCode { print(String(code, radix: 16)) }   // FirmataMessage.irCode
 }
 ```
+
+The public API is the extensions above — `hasIRModule()`, `irConfigureTransmit`,
+`irSendNEC`/`irSendRC6`/`irSendRaw`, `irStartReceive`, and `FirmataMessage.irCode`
+(plus the matching `FirmataTaskRecorder` methods for on-device tasks). The protocol
+encoders are internal implementation.
 
 ### How it works
 
 All protocols are **encoded host-side** into a mark/space timing array and sent through
-one firmware op (raw send, `0x03 <kHz> <durations>`). `IRModule.necTiming` / `rc6Timing`
-build the arrays; adding a protocol (Sony, RC5, …) is a pure-Swift encoder here, no
-firmware change. Record an unknown remote with `irStartReceive` (or a library dumper),
-then replay its exact timing via `irSendRaw(carrierHz:durations:)`.
+one firmware op (raw send, `0x03 <kHz> <durations>`); the NEC/RC6 encoders build the
+arrays, so adding a protocol (Sony, RC5, …) is a pure-Swift change here, no firmware
+change. Record an unknown remote with `irStartReceive` (or a library dumper), then replay
+its exact timing via `irSendRaw(carrierHz:durations:)`.
 
 > Notes: power the IR **LED at 5V** and keep the **receiver at 3.3V** (its OUT feeds a
 > non-5V-tolerant GPIO). The RMT receiver captures ~1 frame per ~80 ms, so space repeated

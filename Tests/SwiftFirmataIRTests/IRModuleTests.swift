@@ -1,7 +1,7 @@
 import Testing
 import Foundation
 import SwiftFirmataClient
-import SwiftFirmataIR
+@testable import SwiftFirmataIR   // encoders/ids are internal; the public API is the extensions
 
 /// Minimal loopback transport (the client's own MockTransport is test-internal to
 /// that package, so the IR package tests provide their own against the public protocol).
@@ -77,5 +77,13 @@ struct IRModuleTests {
         let limbs: [UInt8] = (0..<5).map { UInt8((0x20DF10EF >> (7 * $0)) & 0x7F) }
         #expect(IRModule.decodeReceivedEvent([IRModule.receivedEvent] + limbs) == 0x20DF10EF)
         #expect(IRModule.decodeReceivedEvent([0x99] + limbs) == nil)   // wrong subcommand
+    }
+
+    @Test func messageIRCode() {
+        // Public receive API: FirmataMessage.irCode decodes an IR moduleEvent.
+        let limbs: [UInt8] = (0..<5).map { UInt8((0x20DF10EF >> (7 * $0)) & 0x7F) }
+        #expect(FirmataMessage.moduleEvent(id: IRModule.id, payload: [IRModule.receivedEvent] + limbs).irCode == 0x20DF10EF)
+        #expect(FirmataMessage.moduleEvent(id: 0x42, payload: [IRModule.receivedEvent] + limbs).irCode == nil)  // other module
+        #expect(FirmataMessage.stringData("hi").irCode == nil)                                                  // not a module event
     }
 }
