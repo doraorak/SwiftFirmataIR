@@ -24,12 +24,12 @@ import SwiftFirmataIR
 guard try await board.hasIRModule() else { return }
 
 board // transmit
-try await board.irConfigureTransmit(pin: 4)     // TX pin (LED on 5V for range); carrier is per send
+try await board.irConfigureTransmit(pin: .pin(4))     // TX pin (LED on 5V for range); carrier is per send
 try await board.irSendNEC(0x20DF10EF)           // NEC, 38 kHz
 try await board.irSendRC6(0x0C)                 // RC6 Mode-0, 36 kHz — e.g. a TV power button
 
 // receive: decoded NEC frames land in R9 and arrive as moduleEvents
-try await board.irStartReceive(pin: 18, into: 9)
+try await board.irStartReceive(pin: .pin(18), into: 9)
 for await m in board.messages {
     if let code = m.irCode { print(String(code, radix: 16)) }   // FirmataMessage.irCode
 }

@@ -13,7 +13,7 @@ let package = Package(
     dependencies: [
         // The core client. For local co-development against a checkout, swap this for
         // `.package(path: "../SwiftFirmataClient")`.
-        .package(url: "https://github.com/doraorak/SwiftFirmataClient.git", from: "14.6.0"),
+        .package(url: "https://github.com/doraorak/SwiftFirmataClient.git", from: "15.0.0"),
     ],
     targets: [
         .target(

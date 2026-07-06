@@ -30,7 +30,7 @@ struct IRModuleTests {
     @Test func liveBytes() async throws {
         let (c, t) = await makeClient()
         // Configure just sets the pin; carrier is per send.
-        try await c.irConfigureTransmit(pin: 4)
+        try await c.irConfigureTransmit(pin: .pin(4))
         #expect(t.lastSent == [0xF0, 0x0D, 0x01, 0x00, 4, 0xF7])
         // NEC goes out via the raw op (0x03) at 38 kHz.
         try await c.irSendNEC(0x20DF10EF)
@@ -42,18 +42,18 @@ struct IRModuleTests {
         let rc6Payload = IRModule.rawPayload(carrierHz: 36_000, IRModule.rc6Timing(0x0C))
         #expect(rc6Payload[1] == 36)
         #expect(t.lastSent == [0xF0, 0x0D, 0x01] + rc6Payload + [0xF7])
-        try await c.irStartReceive(pin: 5, into: 9)
+        try await c.irStartReceive(pin: .pin(5), into: 9)
         #expect(t.lastSent == [0xF0, 0x0D, 0x01, 0x02, 5, 9, 0xF7])
     }
 
     @Test func repeatBytes() async throws {
         let (c, t) = await makeClient()
-        try await c.irConfigureTransmit(pin: 4)
+        try await c.irConfigureTransmit(pin: .pin(4))
         // repeats == 1 → single raw op (0x03)
         try await c.irSendNEC(0x20DF10EF)
         #expect(t.lastSent?[3] == 0x03)
         // RC6 repeats > 1 → repeat op (0x04) carrying BOTH toggle frames (A=data, B=data^0x10000)
-        try await c.irSendRC6(0x0C, repeats: 5, gapMs: 107)
+        try await c.irSendRC6(0x0C, repeats: 5, gap: .milliseconds(107))
         #expect(IRModule.toggleRC6(0x0C) == 0x1000C)
         let a = IRModule.rc6Timing(0x0C), b = IRModule.rc6Timing(0x1000C)
         let payload = IRModule.repeatPayload(carrierHz: 36_000, repeats: 5, gapMs: 107, a, b)
