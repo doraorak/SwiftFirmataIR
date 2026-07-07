@@ -11,9 +11,8 @@ let package = Package(
         .library(name: "SwiftFirmataIR", targets: ["SwiftFirmataIR"]),
     ],
     dependencies: [
-        // The core client. For local co-development against a checkout, swap this for
-        // `.package(path: "../SwiftFirmataClient")`.
-        .package(url: "https://github.com/doraorak/SwiftFirmataClient.git", from: "15.0.0"),
+        // The core client (register file / loop op live here).
+        .package(url: "https://github.com/doraorak/SwiftFirmataClient.git", from: "15.1.0"),
     ],
     targets: [
         .target(

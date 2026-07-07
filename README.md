@@ -7,8 +7,8 @@ only if you need IR.
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/doraorak/SwiftFirmataClient", from: "14.6.0"),
-    .package(url: "https://github.com/doraorak/SwiftFirmataIR", from: "1.0.0"),
+    .package(url: "https://github.com/doraorak/SwiftFirmataClient", from: "15.1.0"),
+    .package(url: "https://github.com/doraorak/SwiftFirmataIR", from: "3.0.0"),
 ]
 ```
 
@@ -23,10 +23,15 @@ import SwiftFirmataIR
 // Confirm the connected firmware actually has the module.
 guard try await board.hasIRModule() else { return }
 
-board // transmit
+board // transmit — each call sends ONE frame
 try await board.irConfigureTransmit(pin: .pin(4))     // TX pin (LED on 5V for range); carrier is per send
 try await board.irSendNEC(0x20DF10EF)           // NEC, 38 kHz
 try await board.irSendRC6(0x0C)                 // RC6 Mode-0, 36 kHz — e.g. a TV power button
+
+// press a key several times: wrap a send in a task loop (fires exactly N, ~gap apart)
+try await board.uploadTask(id: 1) {
+    $0.loop(4, gap: .milliseconds(220)) { $0.irSendRC6(0x11) }   // volume down ×4
+}
 
 // receive: decoded NEC frames land in R9 and arrive as moduleEvents
 try await board.irStartReceive(pin: .pin(18), into: 9)

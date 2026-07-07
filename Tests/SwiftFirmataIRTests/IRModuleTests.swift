@@ -46,34 +46,16 @@ struct IRModuleTests {
         #expect(t.lastSent == [0xF0, 0x0D, 0x01, 0x02, 5, 9, 0xF7])
     }
 
-    @Test func repeatBytes() async throws {
-        let (c, t) = await makeClient()
-        try await c.irConfigureTransmit(pin: .pin(4))
-        // repeats == 1 → single raw op (0x03)
-        try await c.irSendNEC(0x20DF10EF)
-        #expect(t.lastSent?[3] == 0x03)
-        // RC6 repeats > 1 → repeat op (0x04) carrying BOTH toggle frames (A=data, B=data^0x10000)
-        try await c.irSendRC6(0x0C, repeats: 5, gap: .milliseconds(107))
-        #expect(IRModule.toggleRC6(0x0C) == 0x1000C)
-        let a = IRModule.rc6Timing(0x0C), b = IRModule.rc6Timing(0x1000C)
-        let payload = IRModule.repeatPayload(carrierHz: 36_000, repeats: 5, gapMs: 107, a, b)
-        #expect(payload[0] == 0x04 && payload[1] == 36 && payload[2] == 5 && payload[3] == 107 && payload[4] == 0)
-        let nA = a.count % 2 == 1 ? a.count + 1 : a.count          // frame A padded to even
-        #expect(Int(payload[5]) | (Int(payload[6]) << 7) == nA)
-        #expect(t.lastSent == [0xF0, 0x0D, 0x01] + payload + [0xF7])
-    }
-
     @Test func encoders() {
         // NEC: 9/4.5 ms header, 32 bits, trailing mark = 67 durations.
         let nec = IRModule.necTiming(0x20DF10EF)
         #expect(nec.count == 67)
         #expect(nec[0] == 9000 && nec[1] == 4500 && nec.last == 562)
         #expect(nec[2] == 562 && nec[3] == 562)          // first bit (bit31 = 0)
-        // RC6 Mode-0: 6t/2t leader, start mark; toggle changes the waveform.
-        #expect(IRModule.toggleRC6(0x0C) == 0x1000C)
+        // RC6 Mode-0: 6t/2t leader, start mark; different data → different waveform.
         let rc6 = IRModule.rc6Timing(0x0C)
         #expect(rc6[0] == 2664 && rc6[1] == 888 && rc6[2] == 444)
-        #expect(rc6 != IRModule.rc6Timing(0x1000C))
+        #expect(rc6 != IRModule.rc6Timing(0x11))
         // rawPayload: op, kHz, 14-bit LE duration pairs.
         let p = IRModule.rawPayload(carrierHz: 36_000, [2664, 888])
         #expect(p == [0x03, 36, UInt8(2664 & 0x7F), UInt8((2664 >> 7) & 0x7F),
