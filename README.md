@@ -38,10 +38,17 @@ try await board.irStartReceive(pin: .pin(18), into: 9)
 for await m in board.messages {
     if let code = m.irCode { print(String(code, radix: 16)) }   // FirmataMessage.irCode
 }
+
+// replay a code known only at runtime — encoded on the device (firmware 2.14+),
+// e.g. re-transmit whatever irStartReceive captured into R9:
+try await board.uploadTask(id: 2) {
+    $0.irSendNEC(fromRegister: .reg(9))
+}
 ```
 
 The public API is the extensions above — `hasIRModule()`, `irConfigureTransmit`,
-`irSendNEC`/`irSendRC6`/`irSendRaw`, `irStartReceive`, and `FirmataMessage.irCode`
+`irSendNEC`/`irSendRC6`/`irSendRaw` (plus `irSendNEC/RC6(fromRegister:)` in tasks),
+`irStartReceive`, and `FirmataMessage.irCode`
 (plus the matching `FirmataTaskRecorder` methods for on-device tasks). The protocol
 encoders are internal implementation.
 
@@ -52,6 +59,10 @@ one firmware op (raw send, `0x03 <kHz> <durations>`); the NEC/RC6 encoders build
 arrays, so adding a protocol (Sony, RC5, …) is a pure-Swift change here, no firmware
 change. Record an unknown remote with `irStartReceive` (or a library dumper), then replay
 its exact timing via `irSendRaw(carrierHz:durations:)`.
+
+The one exception is `fromRegister:` — a code known only at runtime (e.g. one just
+received) can't be encoded on the host, so the firmware carries its own NEC/RC6 encoders
+and builds the waveform on-device from the register value (op `0x05`, firmware 2.14+).
 
 > Notes: power the IR **LED at 5V** and keep the **receiver at 3.3V** (its OUT feeds a
 > non-5V-tolerant GPIO). The RMT receiver captures ~1 frame per ~80 ms, so space repeated
