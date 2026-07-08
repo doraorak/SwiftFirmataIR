@@ -109,7 +109,7 @@ public extension FirmataClient {
 
     /// Replay a raw mark/space timing array (µs) at `carrierHz` (0 = no carrier) — one frame.
     /// The sole transmit path; `irSendNEC`/`irSendRC6` build on it. To send a key several times,
-    /// wrap the send in a task ``FirmataTaskRecorder/loop(_:gap:_:)`` loop.
+    /// wrap the send in a task ``FirmataTaskRecorder/repeat(times:gap:_:)`` block.
     func irSendRaw(carrierHz: UInt32, durations: [UInt16]) async throws {
         try await sendToModule(id: IRModule.id, payload: IRModule.rawPayload(carrierHz: carrierHz, durations))
     }
@@ -151,7 +151,7 @@ public extension FirmataTaskRecorder {
     }
 
     /// Replay one raw mark/space timing array (µs) at `carrierHz` from a task. To send a key
-    /// several times, wrap this in ``FirmataTaskRecorder/loop(_:gap:_:)``.
+    /// several times, wrap this in ``FirmataTaskRecorder/repeat(times:gap:_:)``.
     func irSendRaw(carrierHz: UInt32, durations: [UInt16]) {
         moduleOp(id: IRModule.id, payload: IRModule.rawPayload(carrierHz: carrierHz, durations))
     }

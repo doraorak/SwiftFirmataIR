@@ -6,8 +6,8 @@ separate package that depends on the core client — add it only if you need IR.
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/doraorak/SwiftFirmataClient", from: "15.1.0"),
-    .package(url: "https://github.com/doraorak/SwiftFirmataIR", from: "3.0.0"),
+    .package(url: "https://github.com/doraorak/SwiftFirmataClient", from: "16.0.0"),
+    .package(url: "https://github.com/doraorak/SwiftFirmataIR", from: "3.1.0"),
 ]
 ```
 
@@ -27,9 +27,9 @@ try await board.irConfigureTransmit(pin: .pin(4))     // TX pin (carrier set per
 try await board.irSendNEC(0x20DF10EF)                 // NEC, 38 kHz
 try await board.irSendRC6(0x0C)                       // RC6 Mode-0, 36 kHz — e.g. a TV power button
 
-// Press a key several times: wrap a send in a task loop (fires exactly N, ~gap apart).
+// Press a key several times: wrap a send in a task repeat (fires exactly N, ~gap apart).
 try await board.uploadTask(id: 1) {
-    $0.loop(4, gap: .milliseconds(220)) { $0.irSendRC6(0x11) }   // volume down ×4
+    $0.repeat(times: 4, gap: .milliseconds(220)) { $0.irSendRC6(0x11) }   // volume down ×4
 }
 
 // Receive: decoded NEC frames land in R9 and arrive as messages.
