@@ -12,7 +12,7 @@ let package = Package(
     ],
     dependencies: [
         // The core client (register file / repeat op live here).
-        .package(url: "https://github.com/doraorak/SwiftFirmataClient.git", from: "16.3.0"),
+        .package(url: "https://github.com/doraorak/SwiftFirmataClient.git", from: "17.0.0"),
     ],
     targets: [
         .target(

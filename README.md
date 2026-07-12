@@ -6,8 +6,8 @@ separate package that depends on the core client — add it only if you need IR.
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/doraorak/SwiftFirmataClient", from: "16.3.0"),
-    .package(url: "https://github.com/doraorak/SwiftFirmataIR", from: "4.0.0"),
+    .package(url: "https://github.com/doraorak/SwiftFirmataClient", from: "17.0.0"),
+    .package(url: "https://github.com/doraorak/SwiftFirmataIR", from: "4.0.1"),
 ]
 ```
 
