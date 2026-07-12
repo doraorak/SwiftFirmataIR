@@ -135,17 +135,17 @@ struct IRModuleTests {
                                 UInt8(9000 & 0x7F), UInt8((9000 >> 7) & 0x7F),
                                 UInt8(4500 & 0x7F), UInt8((4500 >> 7) & 0x7F)]
         let msg = FirmataMessage.moduleEvent(id: 1, payload: payload)
-        let frame = try! #require(msg.irRawFrame)
+        let frame = try! #require(msg.module.ir.rawFrame)
         #expect(frame.total == 300)
         #expect(frame.durations == [9000, 4500])
-        #expect(FirmataMessage.moduleEvent(id: 1, payload: [0x03, 0, 0, 0, 0, 0]).irRawFrame == nil)
+        #expect(FirmataMessage.moduleEvent(id: 1, payload: [0x03, 0, 0, 0, 0, 0]).module.ir.rawFrame == nil)
     }
 
     @Test func messageIRCode() {
-        // Public receive API: FirmataMessage.irCode decodes an IR moduleEvent.
+        // Public receive API: FirmataMessage.module.ir.code decodes an IR moduleEvent.
         let limbs: [UInt8] = (0..<5).map { UInt8((0x20DF10EF >> (7 * $0)) & 0x7F) }
-        #expect(FirmataMessage.moduleEvent(id: IRModule.id, payload: [IRModule.receivedEvent] + limbs).irCode == 0x20DF10EF)
-        #expect(FirmataMessage.moduleEvent(id: 0x42, payload: [IRModule.receivedEvent] + limbs).irCode == nil)  // other module
-        #expect(FirmataMessage.stringData("hi").irCode == nil)                                                  // not a module event
+        #expect(FirmataMessage.moduleEvent(id: IRModule.id, payload: [IRModule.receivedEvent] + limbs).module.ir.code == 0x20DF10EF)
+        #expect(FirmataMessage.moduleEvent(id: 0x42, payload: [IRModule.receivedEvent] + limbs).module.ir.code == nil)  // other module
+        #expect(FirmataMessage.stringData("hi").module.ir.code == nil)                                                  // not a module event
     }
 }

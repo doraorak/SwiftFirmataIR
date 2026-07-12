@@ -5,7 +5,7 @@ import SwiftFirmataClient
  * IR module (firmware id 0x01, firmware 2.9+) — NEC/RC6 infrared over the ESP32's RMT
  * peripheral. The public API is the `FirmataClient` / `FirmataTaskRecorder` / `FirmataMessage`
  * extensions below (`irSendNEC`, `irSendRC6`, `irSendRaw`, `irStartReceive`, `hasIRModule`,
- * `FirmataMessage.irCode`). The `IRModule` namespace itself is an internal implementation
+ * `message.module.ir.code`). The `IRModule` namespace itself is an internal implementation
  * detail (encoders, ids). Check `hasIRModule()` before relying on it.
  *
  * Module payload protocol (7-bit bytes):
@@ -177,7 +177,7 @@ public extension FirmataClient {
     }
 
     /// Start receiving NEC on `pin`; every decoded 32-bit frame is written to `R[register]`
-    /// (also readable by tasks) and arrives on ``messages`` — read ``FirmataMessage/irCode``.
+    /// (also readable by tasks) and arrives on ``messages`` — read `message.module.ir.code`.
     /// All receivers decode the same raw capture ``irStartRawCapture(pin:)`` reports.
     func irReceiveNEC(pin: FirmataPin, into register: UInt8) async throws {
         try await irReceive(pin: pin, into: register, protocol: 0)
@@ -208,7 +208,7 @@ public extension FirmataClient {
     }
 
     /// Sniff mode (firmware 2.17 / IR module 1.1+): report EVERY received IR burst — any
-    /// protocol — as raw mark/space timings on ``messages``; read ``FirmataMessage/irRawFrame``.
+    /// protocol — as raw mark/space timings on ``messages``; read `message.module.ir.rawFrame`.
     /// Identifies remotes the NEC decoder can't parse (AC units, RC5/RC6, Sony…); replay
     /// what you learned with ``irSendRaw(carrierHz:durations:)``. NEC decode keeps running.
     func irStartRawCapture(pin: FirmataPin) async throws {
@@ -221,17 +221,27 @@ public extension FirmataClient {
     }
 }
 
-public extension FirmataMessage {
-    /// If this message is an IR received-frame event, the decoded 32-bit NEC code; else `nil`.
-    var irCode: UInt32? {
-        guard case let .moduleEvent(id, payload) = self, id == IRModule.id else { return nil }
+public extension ModuleMessage {
+    /// IR-module decoders for this message: `message.module.ir.code` / `.rawFrame`.
+    var ir: IRMessage { IRMessage(message) }
+}
+
+/// IR-module view over a ``FirmataMessage`` — reached via `message.module.ir`. Keeps the
+/// core ``FirmataMessage`` type free of IR-specific fields.
+public struct IRMessage: Sendable {
+    let message: FirmataMessage
+    init(_ message: FirmataMessage) { self.message = message }
+
+    /// If this message is an IR received-frame event, the decoded 32-bit code; else `nil`.
+    public var code: UInt32? {
+        guard case let .moduleEvent(id, payload) = message, id == IRModule.id else { return nil }
         return IRModule.decodeReceivedEvent(payload)
     }
 
     /// If this message is a raw-capture burst (``FirmataClient/irStartRawCapture(pin:)``),
     /// the capture: `total` durations seen, `durations` the reported mark/space µs.
-    var irRawFrame: (total: Int, durations: [UInt16])? {
-        guard case let .moduleEvent(id, payload) = self, id == IRModule.id else { return nil }
+    public var rawFrame: (total: Int, durations: [UInt16])? {
+        guard case let .moduleEvent(id, payload) = message, id == IRModule.id else { return nil }
         return IRModule.decodeRawFrameEvent(payload)
     }
 }
@@ -325,7 +335,7 @@ public extension FirmataTaskRecorder {
 
     /// Start sniff mode from the task (firmware 2.17 / IR 1.1+): every received IR burst —
     /// any protocol — streams to whichever host is connected as raw timings
-    /// (``FirmataMessage/irRawFrame``). Record inside `once { }` on repeating tasks.
+    /// (`message.module.ir.rawFrame`). Record inside `once { }` on repeating tasks.
     func irStartRawCapture(pin: TaskPin) {
         moduleOp(id: IRModule.id, payload: [0x06, pin.number & 0x7F, 1])
     }

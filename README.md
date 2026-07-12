@@ -6,8 +6,8 @@ separate package that depends on the core client — add it only if you need IR.
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/doraorak/SwiftFirmataClient", from: "16.2.0"),
-    .package(url: "https://github.com/doraorak/SwiftFirmataIR", from: "3.3.0"),
+    .package(url: "https://github.com/doraorak/SwiftFirmataClient", from: "16.3.0"),
+    .package(url: "https://github.com/doraorak/SwiftFirmataIR", from: "4.0.0"),
 ]
 ```
 
@@ -36,13 +36,13 @@ try await client.uploadTask(id: 1) {
 // Receive: pick the protocol; decoded frames land in R9 and arrive as messages.
 try await client.irReceiveNEC(pin: .pin(18), into: 9)      // or irReceiveRC6 / irReceiveCoolix
 for await m in client.messages {
-    if let code = m.irCode { print(String(code, radix: 16)) }
+    if let code = m.module.ir.code { print(String(code, radix: 16)) }
 }
 
 // Don't know the protocol? Sniff raw bursts and read the timings:
 try await client.irStartRawCapture(pin: .pin(18))
 for await m in client.messages {
-    if let f = m.irRawFrame { print(f.total, f.durations) }   // header µs fingerprint the protocol
+    if let f = m.module.ir.rawFrame { print(f.total, f.durations) }   // header µs fingerprint the protocol
 }
 
 // Replay a code known only at runtime — encoded on the device from a register:
@@ -65,8 +65,8 @@ try await client.uploadTask(id: 2) {
   switching protocol is just a different op byte. (`irStartReceive` is the deprecated NEC-only
   spelling.) RC6 values include the mode/toggle bits — compare against `code` and `code | 0x10000`.
 - `irStartRawCapture(pin:)` / `irStopRawCapture()` — sniff mode: every burst (any protocol)
-  arrives as raw mark/space µs on `FirmataMessage.irRawFrame` (firmware 2.17+).
-- `FirmataMessage.irCode` / `FirmataMessage.irRawFrame` — decoded code / raw burst on a message.
+  arrives as raw mark/space µs on `message.module.ir.rawFrame` (firmware 2.17+).
+- `FirmataMessage.irCode` / `message.module.ir.rawFrame` — decoded code / raw burst on a message.
 
 ## How it works
 
