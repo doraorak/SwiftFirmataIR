@@ -12,8 +12,9 @@ import SwiftFirmataClient
  *   0x00 <pin>              configure the transmitter on a pin (any full-digital pin)
  *   0x02 <pin> <dstReg> [<protocol>]  start the receiver on a pin; each decoded frame is
  *                           written to R[dstReg] and pushed as event 0x03. protocol 0 = NEC
- *                           (default), 1 = RC6 mode 0, 2 = Coolix — all three decode the
- *                           same raw capture the sniffer (0x06) sees
+ *                           (default), 1 = RC6 mode 0, 2 = Coolix — all decode the same raw
+ *                           capture the sniffer (0x06) sees
+ *   0x08 <pin> <slot>       receive raw timings as the text "[d0,d1,…]" into device string slot
  *   0x03 <kHz> <durations>  RAW send: replay alternating mark/space µs (each a 14-bit LE
  *                           pair) at a <kHz> carrier (0 = none). The sole transmit path —
  *                           `irSendNEC`/`irSendRC6` are host-side encoders that build a
@@ -194,6 +195,7 @@ public extension FirmataClient {
         try await irReceive(pin: pin, into: register, protocol: 2)
     }
 
+
     private func irReceive(pin: FirmataPin, into register: UInt8, protocol proto: UInt8) async throws {
         guard register <= 15 else { throw FirmataError.invalidData }
         try await sendToModule(id: IRModule.id,
@@ -301,6 +303,15 @@ public extension FirmataTaskRecorder {
     /// lands in `dst`.
     func irReceiveCoolix(pin: TaskPin, into dst: TaskNumberRegister) {
         irReceive(pin: pin, into: dst, protocol: 2)
+    }
+
+    /// Start receiving ANY remote from the task as TEXT (firmware 2.18+): each burst's raw
+    /// mark/space timings are written into the string `dst` as `"[d0,d1,d2,…]"` — print it on
+    /// an OLED (``displayPrint(_:line:col:)``) or inspect it to read off / learn a protocol.
+    /// Create the string first (e.g. `board.string.createString("")`). Capped to the header
+    /// plus lead bits of long AC frames (~90 durations), which is what fingerprints a protocol.
+    func irReceiveRawText(pin: TaskPin, into dst: TaskString) {
+        moduleOp(id: IRModule.id, payload: [0x08, pin.number & 0x7F, (dst.slot.index % 10) + 2])
     }
 
     private func irReceive(pin: TaskPin, into dst: TaskNumberRegister, protocol proto: UInt8) {

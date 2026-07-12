@@ -120,6 +120,15 @@ struct IRModuleTests {
                               0xF0, 0x7B, 0x7F, 0x33, 0x01, 0x06, 0, 0, 0xF7])
     }
 
+    @Test func recordedRawTextBytes() {
+        let rec = FirmataTaskRecorder()
+        let str = rec.string.createString("", into: .init(0))     // slot 0 -> device slot 2
+        rec.irReceiveRawText(pin: .pin(18), into: str)
+        // last recorded op = moduleOp 0x08 <pin> <deviceSlot 2>
+        let tail = Array(rec.bytes.suffix(9))
+        #expect(tail == [0xF0, 0x7B, 0x7F, 0x33, 0x01, 0x08, 18, 2, 0xF7])
+    }
+
     @Test func rawCaptureDecode() {
         // event 0x07: total=300 (0x2C,0x02), then two durations 9000 and 4500 µs
         let payload: [UInt8] = [0x07, 0x2C, 0x02,
